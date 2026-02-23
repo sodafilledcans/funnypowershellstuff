@@ -9,7 +9,6 @@ $consolePtr = [Console.Window]::GetConsoleWindow()
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Media
 
 $mp3Player = $null
 
@@ -24,7 +23,7 @@ try {
     $mp3Player.controls.play()
     $mp3Player.settings.setMode("loop", $true)
 } catch {
-    Write-Host "Sound download failed, using beeps instead"
+    Write-Host "Sound playback failed, using beeps instead"
 }
 
 $form = New-Object System.Windows.Forms.Form
