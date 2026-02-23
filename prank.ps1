@@ -26,30 +26,59 @@ $form.TopMost = $true
 $form.BackColor = "Black"
 $form.KeyPreview = $true
 
-$textBox = New-Object System.Windows.Forms.RichTextBox
-$textBox.ForeColor = "Lime"
-$textBox.BackColor = "Black"
-$textBox.Font = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Bold)
-$textBox.Text = ""
-$textBox.Dock = "Fill"
-$textBox.ReadOnly = $true
-$textBox.BorderStyle = "None"
-$textBox.WordWrap = $true
-$textBox.ScrollBars = "Vertical"
+$listView = New-Object System.Windows.Forms.ListView
+$listView.ForeColor = "Lime"
+$listView.BackColor = "Black"
+$listView.Font = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Bold)
+$listView.Dock = "Fill"
+$listView.BorderStyle = "None"
+$listView.View = "Details"
+$listView.HeaderStyle = "None"
+$listView.Scrollable = $true
+$listView.FullRowSelect = $false
+$listView.GridLines = $false
+$listView.AllowColumnReorder = $false
+$listView.AutoResizeColumns = "None"
 
-$form.Controls.Add($textBox)
+$listView.Columns.Add("Output", $form.Width)
+
+$form.Controls.Add($listView)
 $form.Show()
 $form.Refresh()
 Start-Sleep -Milliseconds 1350
 
 $username = [Environment]::UserName
 
-$textBox.Text = "Hello $username!`r`n`r`nInitializing SodaGrabber v2.0...`r`n"
-$form.Refresh()
+function Add-Output {
+    param([string]$text)
+    if ($form.IsDisposed) { return }
+    
+    $lines = $text -split "`r`n"
+    foreach ($line in $lines) {
+        if ($line.Trim() -ne "") {
+            $item = New-Object System.Windows.Forms.ListViewItem($line)
+            $item.ForeColor = "Lime"
+            $item.BackColor = "Black"
+            $listView.Items.Add($item)
+        }
+    }
+    
+    if ($listView.Items.Count -gt 0) {
+        $listView.Items[$listView.Items.Count - 1].EnsureVisible()
+        $listView.Refresh()
+        $form.Refresh()
+    }
+    [System.Windows.Forms.Application]::DoEvents()
+}
+
+Add-Output "Hello $username!"
+Add-Output ""
+Add-Output "Initializing SodaGrabber v2.0..."
+Add-Output ""
 Start-Sleep -Seconds 2
 if ($form.IsDisposed) { return }
-$textBox.Text += "Scanning system directories...`r`n`r`n"
-$form.Refresh()
+Add-Output "Scanning system directories..."
+Add-Output ""
 Start-Sleep -Seconds 1
 if ($form.IsDisposed) { return }
 
@@ -84,9 +113,8 @@ $allFiles = $allFiles | Where-Object { $_.Name -ne $null } | Sort-Object { Get-R
 $totalFiles = $allFiles.Count
 
 if ($totalFiles -eq 0) {
-    $textBox.Text += "ERROR: No files found on system!`r`n"
-    $textBox.Text += "Press ESC to exit`r`n"
-    $form.Refresh()
+    Add-Output "ERROR: No files found on system!"
+    Add-Output "Press ESC to exit"
     while (-not $form.IsDisposed) {
         [System.Windows.Forms.Application]::DoEvents()
         Start-Sleep -Milliseconds 100
@@ -106,35 +134,25 @@ while ((Get-Date) -lt $scanEndTime -and -not $form.IsDisposed) {
     
     $foundFiles += $fileName
     
-    $textBox.Text += "[FOUND] $fileName`r`n"
-    $textBox.Text += "[LOCATION] $filePath`r`n"
-    $textBox.Text += "[SIZE] $fileSize MB`r`n"
-    $textBox.Text += "[DOWNLOADING] $fileName...`r`n"
+    Add-Output "[FOUND] $fileName"
+    Add-Output "[LOCATION] $filePath"
+    Add-Output "[SIZE] $fileSize MB"
+    Add-Output "[DOWNLOADING] $fileName..."
     
     $elapsed = ((Get-Date) - $scanStartTime).TotalSeconds
     $percentComplete = [math]::Round(($elapsed / $scanDuration) * 100)
-    $textBox.Text += "[PROGRESS] $percentComplete% - $fileIndex files found`r`n`r`n"
-    
-    # Force scroll to bottom
-    $textBox.SelectionStart = $textBox.Text.Length
-    $textBox.ScrollToCaret()
-    $textBox.Refresh()
-    
-    $form.Refresh()
-    [System.Windows.Forms.Application]::DoEvents()
+    Add-Output "[PROGRESS] $percentComplete% - $fileIndex files found"
+    Add-Output ""
     
     Start-Sleep -Milliseconds 300
 }
 
 if ($form.IsDisposed) { return }
 
-$textBox.Text += "`r`n" + "="*60 + "`r`n"
-$textBox.Text += "[SCAN COMPLETE] $($foundFiles | Select-Object -Unique | Measure-Object | Select-Object -ExpandProperty Count) unique files located`r`n"
-$textBox.Text += "[TRANSFER INITIATED] Connecting to SodaGrabber.xyz...`r`n"
-$textBox.SelectionStart = $textBox.Text.Length
-$textBox.ScrollToCaret()
-$textBox.Refresh()
-$form.Refresh()
+Add-Output ""
+Add-Output ("="*60)
+Add-Output "[SCAN COMPLETE] $($foundFiles | Select-Object -Unique | Measure-Object | Select-Object -ExpandProperty Count) unique files located"
+Add-Output "[TRANSFER INITIATED] Connecting to SodaGrabber.xyz..."
 Start-Sleep -Seconds 3
 if ($form.IsDisposed) { return }
 
@@ -142,87 +160,68 @@ $foundFiles = $foundFiles | Select-Object -Unique
 
 foreach ($file in $foundFiles) {
     if ($form.IsDisposed) { return }
-    $textBox.Text += "`r`n[UPLOADING] $file -> SodaGrabber.xyz`r`n"
-    $textBox.Text += "[STATUS] .."
-    $textBox.SelectionStart = $textBox.Text.Length
-    $textBox.ScrollToCaret()
-    $textBox.Refresh()
+    Add-Output ""
+    Add-Output "[UPLOADING] $file -> SodaGrabber.xyz"
+    Add-Output "[STATUS] .."
+    Start-Sleep -Milliseconds 500
+    if ($form.IsDisposed) { return }
+    
+    $listView.Items[$listView.Items.Count - 1].Text = "[STATUS] .. ."
+    $listView.Items[$listView.Items.Count - 1].EnsureVisible()
+    $listView.Refresh()
     $form.Refresh()
     Start-Sleep -Milliseconds 500
-    
     if ($form.IsDisposed) { return }
-    $textBox.Text += " ."
-    $textBox.SelectionStart = $textBox.Text.Length
-    $textBox.ScrollToCaret()
-    $textBox.Refresh()
+    
+    $listView.Items[$listView.Items.Count - 1].Text = "[STATUS] .. . ."
+    $listView.Items[$listView.Items.Count - 1].EnsureVisible()
+    $listView.Refresh()
     $form.Refresh()
     Start-Sleep -Milliseconds 500
-    
     if ($form.IsDisposed) { return }
-    $textBox.Text += " .`r`n"
-    $textBox.SelectionStart = $textBox.Text.Length
-    $textBox.ScrollToCaret()
-    $textBox.Refresh()
-    $form.Refresh()
-    Start-Sleep -Milliseconds 500
     
-    if ($form.IsDisposed) { return }
-    $textBox.Text += "[COMPLETED] $file transferred successfully!`r`n"
-    $textBox.SelectionStart = $textBox.Text.Length
-    $textBox.ScrollToCaret()
-    $textBox.Refresh()
-    $form.Refresh()
+    Add-Output "[COMPLETED] $file transferred successfully!"
     [System.Windows.Forms.Application]::DoEvents()
 }
 
 if ($form.IsDisposed) { return }
 
-$textBox.ForeColor = "Red"
-$textBox.Font = New-Object System.Drawing.Font("Consolas", 11, [System.Drawing.FontStyle]::Bold)
-$textBox.Text += "`r`n" + "!"*70 + "`r`n"
-$textBox.Text += "!!! UNAUTHORIZED TRANSFER DETECTED !!!`r`n"
-$textBox.Text += "!"*70 + "`r`n"
-$textBox.SelectionStart = $textBox.Text.Length
-$textBox.ScrollToCaret()
-$textBox.Refresh()
-$form.Refresh()
+$listView.ForeColor = "Red"
+$listView.Font = New-Object System.Drawing.Font("Consolas", 11, [System.Drawing.FontStyle]::Bold)
+$listView.Refresh()
+
+Add-Output ""
+Add-Output ("!"*70)
+Add-Output "!!! UNAUTHORIZED TRANSFER DETECTED !!!"
+Add-Output ("!"*70)
 Start-Sleep -Seconds 2
 if ($form.IsDisposed) { return }
 
 foreach ($file in $foundFiles) {
     if ($form.IsDisposed) { return }
-    $textBox.Text += "`r`n[ALERT] $file has been Transferred!`r`n"
-    $textBox.Text += "[WARNING] Remote server: 198.51.100.$((Get-Random -Minimum 1 -Maximum 255))`r`n"
-    $textBox.Text += "[STATUS] Data exfiltrated!`r`n"
-    $textBox.SelectionStart = $textBox.Text.Length
-    $textBox.ScrollToCaret()
-    $textBox.Refresh()
-    $form.Refresh()
+    Add-Output ""
+    Add-Output "[ALERT] $file has been Transferred!"
+    Add-Output "[WARNING] Remote server: 198.51.100.$((Get-Random -Minimum 1 -Maximum 255))"
+    Add-Output "[STATUS] Data exfiltrated!"
     [System.Windows.Forms.Application]::DoEvents()
+    Start-Sleep -Milliseconds 100
 }
 
 if ($form.IsDisposed) { return }
 Start-Sleep -Seconds 2
 if ($form.IsDisposed) { return }
 
-$textBox.Text += "`r`n" + "█"*70 + "`r`n"
-$textBox.Text += "██ UHHH U R CRASHING REAL!! ██`r`n"
-$textBox.Text += "█"*70 + "`r`n"
-$textBox.SelectionStart = $textBox.Text.Length
-$textBox.ScrollToCaret()
-$textBox.Refresh()
-$form.Refresh()
+Add-Output ""
+Add-Output ("█"*70)
+Add-Output "██ UHHH U R CRASHING REAL!! ██"
+Add-Output ("█"*70)
 
 $spamEnd = (Get-Date).AddSeconds(15)
 while ((Get-Date) -lt $spamEnd -and -not $form.IsDisposed) {
-    $textBox.Text += "[CRITICAL] SYSTEM DESTABILIZATION DETECTED - FORCING DESKTOP REDIRECT`r`n"
-    $textBox.Text += "[ERROR 0x$("{0:X4}" -f (Get-Random -Maximum 65535))] MEMORY CORRUPTION IN SECTOR $(Get-Random -Minimum 1 -Maximum 999)`r`n"
-    $textBox.Text += "[WARNING] $username.exe has stopped responding`r`n"
-    $textBox.Text += "[FATAL] Attempting to delete user profile...`r`n"
-    $textBox.SelectionStart = $textBox.Text.Length
-    $textBox.ScrollToCaret()
-    $textBox.Refresh()
-    $form.Refresh()
+    Add-Output "[CRITICAL] SYSTEM DESTABILIZATION DETECTED - FORCING DESKTOP REDIRECT"
+    Add-Output "[ERROR 0x$("{0:X4}" -f (Get-Random -Maximum 65535))] MEMORY CORRUPTION IN SECTOR $(Get-Random -Minimum 1 -Maximum 999)"
+    Add-Output "[WARNING] $username.exe has stopped responding"
+    Add-Output "[FATAL] Attempting to delete user profile..."
     
     Start-Sleep -Milliseconds 80
     [System.Windows.Forms.Application]::DoEvents()
@@ -230,12 +229,9 @@ while ((Get-Date) -lt $spamEnd -and -not $form.IsDisposed) {
 
 if ($form.IsDisposed) { return }
 
-$textBox.Text += "`r`n`r`n" + " "*30 + "SYSTEM TERMINATION IN PROGRESS...`r`n"
-$textBox.Text += " "*30 + "Goodbye, $username!`r`n"
-$textBox.SelectionStart = $textBox.Text.Length
-$textBox.ScrollToCaret()
-$textBox.Refresh()
-$form.Refresh()
+Add-Output ""
+Add-Output (" "*30 + "SYSTEM TERMINATION IN PROGRESS...")
+Add-Output (" "*30 + "Goodbye, $username!")
 Start-Sleep -Seconds 3
 
 $form.Close()
