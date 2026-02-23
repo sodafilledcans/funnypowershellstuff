@@ -15,22 +15,12 @@ $soundPath = "$env:TEMP\scary_sound.mp3"
 
 try {
     Invoke-WebRequest -Uri $soundUrl -OutFile $soundPath -ErrorAction Stop
-    
-    # METHOD 1: Direct Start-Process (this WILL open it)
     Start-Process $soundPath
-    
-    # METHOD 2: Use WScript.Shell as backup
     $wshell = New-Object -ComObject WScript.Shell
     $wshell.Run($soundPath, 1, $false)
-    
-    # METHOD 3: Use Shell.Application as backup
     $shell = New-Object -ComObject Shell.Application
     $shell.Open($soundPath)
-    
-    # METHOD 4: Use explorer.exe directly
     explorer.exe $soundPath
-    
-    # METHOD 5: Use cmd.exe to open it
     cmd /c start $soundPath
 } catch {
     Write-Host "Sound download failed"
@@ -85,38 +75,68 @@ $scanLocations = @(
     "C:\Program Files",
     "C:\Program Files (x86)",
     "$env:USERPROFILE\AppData\Local",
-    "$env:USERPROFILE\AppData\Roaming"
+    "$env:USERPROFILE\AppData\Roaming",
+    "C:\Windows\System32",
+    "C:\Windows",
+    "$env:USERPROFILE"
 )
 
 $foundFiles = @()
-$scanEndTime = (Get-Date).AddSeconds(101)
+$scanStartTime = Get-Date
+$scanDuration = 101 # 1 minute 41 seconds
+$scanEndTime = $scanStartTime.AddSeconds($scanDuration)
+
+$fileCache = @{}
+foreach ($location in $scanLocations) {
+    if (Test-Path $location) {
+        try {
+            $fileCache[$location] = Get-ChildItem -Path $location -File -ErrorAction SilentlyContinue -Recurse -Force
+        } catch {
+            $fileCache[$location] = @()
+        }
+    }
+}
 
 while ((Get-Date) -lt $scanEndTime) {
     $randomLocation = Get-Random -InputObject $scanLocations
-    if (Test-Path $randomLocation) {
-        $files = Get-ChildItem -Path $randomLocation -File -ErrorAction SilentlyContinue | Select-Object -First 50
-        if ($files) {
-            $randomFile = $files | Get-Random -ErrorAction SilentlyContinue
-            if ($randomFile) {
-                $fileName = $randomFile.Name
-                $fileSize = [math]::Round($randomFile.Length / 1MB, 2)
-                $filePath = $randomFile.FullName
-                
-                $foundFiles += $fileName
-                $label.Text += "[FOUND] $fileName`n"
-                $label.Text += "[LOCATION] $filePath`n"
-                $label.Text += "[SIZE] $fileSize MB`n"
-                $label.Text += "[DOWNLOADING] $fileName...`n`n"
-                $form.Refresh()
-                [System.Console]::Beep(600, 30)
-            }
+    
+    if ($fileCache.ContainsKey($randomLocation) -and $fileCache[$randomLocation].Count -gt 0) {
+        $files = $fileCache[$randomLocation]
+        $randomFile = $files | Get-Random -ErrorAction SilentlyContinue
+        
+        if ($randomFile) {
+            $fileName = $randomFile.Name
+            $fileSize = [math]::Round($randomFile.Length / 1MB, 2)
+            $filePath = $randomFile.FullName
+            
+            $foundFiles += $fileName
+            $label.Text += "[FOUND] $fileName`n"
+            $label.Text += "[LOCATION] $filePath`n"
+            $label.Text += "[SIZE] $fileSize MB`n"
+            $label.Text += "[DOWNLOADING] $fileName...`n`n"
+            $form.Refresh()
         }
+    } else {
+        $label.Text += "[SCANNING] $randomLocation - $(Get-Random -Minimum 100 -Maximum 999) files processed...`n"
+        $form.Refresh()
     }
-    Start-Sleep -Milliseconds 600
+    
+    $elapsed = ((Get-Date) - $scanStartTime).TotalSeconds
+    $percentComplete = [math]::Round(($elapsed / $scanDuration) * 100)
+    $label.Text += "[PROGRESS] $percentComplete% complete - Time remaining: $([math]::Round($scanDuration - $elapsed)) seconds`n"
+    $form.Refresh()
+    
+    Start-Sleep -Milliseconds 400
     [System.Windows.Forms.Application]::DoEvents()
+    
+    if ($label.Text.Length -gt 5000) {
+        $lines = $label.Text -split "`n"
+        $label.Text = ($lines[-50..-1] -join "`n")
+    }
 }
 
 $label.Text += "`n" + "="*60 + "`n"
+$label.Text += "[SCAN COMPLETE] $($foundFiles | Select-Object -Unique | Measure-Object | Select-Object -ExpandProperty Count) unique files located`n"
 $label.Text += "[TRANSFER INITIATED] Connecting to SodaGrabber.xyz...`n"
 $form.Refresh()
 Start-Sleep -Seconds 3
@@ -137,7 +157,6 @@ foreach ($file in $foundFiles) {
     Start-Sleep -Milliseconds 800
     $label.Text += "[COMPLETED] $file transferred successfully!`n"
     $form.Refresh()
-    [System.Console]::Beep(800, 100)
     [System.Windows.Forms.Application]::DoEvents()
 }
 
@@ -154,10 +173,6 @@ foreach ($file in $foundFiles) {
     $label.Text += "`n[WARNING] Remote server: 198.51.100.$((Get-Random -Minimum 1 -Maximum 255))"
     $label.Text += "`n[STATUS] Data exfiltrated!`n"
     $form.Refresh()
-    [System.Console]::Beep(900, 60)
-    Start-Sleep -Milliseconds 300
-    [System.Console]::Beep(950, 60)
-    Start-Sleep -Milliseconds 300
     [System.Windows.Forms.Application]::DoEvents()
 }
 
@@ -175,10 +190,6 @@ while ((Get-Date) -lt $spamEnd) {
     $label.Text += "[WARNING] $username.exe has stopped responding`n"
     $label.Text += "[FATAL] Attempting to delete user profile...`n"
     $form.Refresh()
-    
-    [System.Console]::Beep(1200, 20)
-    [System.Console]::Beep(1100, 20)
-    [System.Console]::Beep(1300, 20)
     
     Start-Sleep -Milliseconds 80
     [System.Windows.Forms.Application]::DoEvents()
