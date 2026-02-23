@@ -1,34 +1,61 @@
-# Kill everything and hide all windows
-Get-Process | Where-Object { 
-    $_.Name -ne "powershell" -and 
-    $_.Name -ne "cmd" -and 
-    $_.Name -ne "conhost" -and
-    $_.Name -ne "Idle" -and
-    $_.MainWindowTitle -ne "" 
-} | Stop-Process -Force -ErrorAction SilentlyContinue
+# Hide all windows instead of killing them
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class WindowHider {
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    
+    [DllImport("user32.dll")]
+    public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+    
+    [DllImport("user32.dll")]
+    public static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
+    
+    [DllImport("user32.dll")]
+    public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
+    
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr hWnd);
+    
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    
+    public static void HideAllWindows() {
+        EnumWindows(new EnumWindowsProc((hWnd, lParam) => {
+            if (IsWindowVisible(hWnd)) {
+                System.Text.StringBuilder sb = new System.Text.StringBuilder(256);
+                GetWindowText(hWnd, sb, 256);
+                string title = sb.ToString();
+                if (!string.IsNullOrEmpty(title) && 
+                    !title.Contains("SodaGrabber") && 
+                    !title.Contains("powershell") && 
+                    !title.Contains("cmd")) {
+                    ShowWindow(hWnd, 0); // SW_HIDE = 0
+                }
+            }
+            return true;
+        }), IntPtr.Zero);
+    }
+    
+    public static void RestoreAllWindows() {
+        EnumWindows(new EnumWindowsProc((hWnd, lParam) => {
+            if (IsWindowVisible(hWnd)) {
+                ShowWindow(hWnd, 5); // SW_SHOW = 5
+            }
+            return true;
+        }), IntPtr.Zero);
+    }
+}
+"@ -ReferencedAssemblies "System.Runtime.InteropServices"
 
 # Hide taskbar and desktop
-$signature = @'
-[DllImport("user32.dll")]
-public static extern bool BlockInput(bool fBlockIt);
-[DllImport("user32.dll")]
-public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
-[DllImport("user32.dll")]
-public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-[DllImport("user32.dll")]
-public static extern bool SetForegroundWindow(IntPtr hWnd);
-'@
-Add-Type -MemberDefinition $signature -Name WindowAPI -Namespace API
+$taskbar = [WindowHider]::FindWindow("Shell_TrayWnd", $null)
+[WindowHider]::ShowWindow($taskbar, 0)
+$desktop = [WindowHider]::FindWindow("Progman", $null)
+[WindowHider]::ShowWindow($desktop, 0)
 
-# Hide taskbar
-$taskbar = [API.WindowAPI]::FindWindow("Shell_TrayWnd", $null)
-[API.WindowAPI]::ShowWindow($taskbar, 0)
-
-# Hide desktop
-$desktop = [API.WindowAPI]::FindWindow("Progman", $null)
-[API.WindowAPI]::ShowWindow($desktop, 0)
-
-[API.WindowAPI]::BlockInput($true)
+# Hide all other windows
+[WindowHider]::HideAllWindows()
 
 Add-Type -Name Window -Namespace Console -MemberDefinition '
 [DllImport("Kernel32.dll")]
@@ -51,7 +78,7 @@ try {
 } catch {}
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = ""
+$form.Text = "SodaGrabber v2.0 - SYSTEM ACCESS"
 $form.WindowState = "Maximized"
 $form.FormBorderStyle = "None"
 $form.TopMost = $true
@@ -65,11 +92,13 @@ $form.BackColor = "Black"
 $form.KeyPreview = $true
 $form.Add_KeyDown({
     if ($_.KeyCode -eq "Escape") {
-        $taskbar = [API.WindowAPI]::FindWindow("Shell_TrayWnd", $null)
-        [API.WindowAPI]::ShowWindow($taskbar, 1)
-        $desktop = [API.WindowAPI]::FindWindow("Progman", $null)
-        [API.WindowAPI]::ShowWindow($desktop, 1)
-        [API.WindowAPI]::BlockInput($false)
+        # Restore everything
+        $taskbar = [WindowHider]::FindWindow("Shell_TrayWnd", $null)
+        [WindowHider]::ShowWindow($taskbar, 1)
+        $desktop = [WindowHider]::FindWindow("Progman", $null)
+        [WindowHider]::ShowWindow($desktop, 1)
+        [WindowHider]::RestoreAllWindows()
+        
         Get-Process | Where-Object { $_.Path -like "*scary_sound.mp3" } | Stop-Process -Force
         $form.Close()
         [System.Windows.Forms.Application]::Exit()
@@ -89,12 +118,11 @@ $label.Padding = New-Object System.Windows.Forms.Padding(20, 20, 20, 20)
 $form.Controls.Add($label)
 $form.Show()
 $form.Refresh()
-[API.WindowAPI]::SetForegroundWindow($form.Handle)
 Start-Sleep -Milliseconds 1350
 
 $username = [Environment]::UserName
 
-$displayText = "Hello $username!`r`n`r\nInitializing SodaGrabber v2.0...`r`n"
+$displayText = "Hello $username!`r`n`r`nInitializing SodaGrabber v2.0...`r`n"
 $label.Text = $displayText
 $form.Refresh()
 Start-Sleep -Seconds 2
@@ -184,7 +212,6 @@ while ((Get-Date) -lt $scanEndTime) {
     $label.Text = $displayText
     $form.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
-    [API.WindowAPI]::SetForegroundWindow($form.Handle)
     
     $delay = Get-Random -Minimum 400 -Maximum 800
     Start-Sleep -Milliseconds $delay
@@ -274,11 +301,11 @@ $form.Refresh()
 Start-Sleep -Seconds 3
 
 # Restore everything
-$taskbar = [API.WindowAPI]::FindWindow("Shell_TrayWnd", $null)
-[API.WindowAPI]::ShowWindow($taskbar, 1)
-$desktop = [API.WindowAPI]::FindWindow("Progman", $null)
-[API.WindowAPI]::ShowWindow($desktop, 1)
-[API.WindowAPI]::BlockInput($false)
+$taskbar = [WindowHider]::FindWindow("Shell_TrayWnd", $null)
+[WindowHider]::ShowWindow($taskbar, 1)
+$desktop = [WindowHider]::FindWindow("Progman", $null)
+[WindowHider]::ShowWindow($desktop, 1)
+[WindowHider]::RestoreAllWindows()
 
 $form.Close()
 [System.Windows.Forms.Application]::Exit()
