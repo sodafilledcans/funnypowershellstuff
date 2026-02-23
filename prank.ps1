@@ -115,6 +115,11 @@ while ((Get-Date) -lt $scanEndTime -and -not $form.IsDisposed) {
     $percentComplete = [math]::Round(($elapsed / $scanDuration) * 100)
     $textBox.Text += "[PROGRESS] $percentComplete% - $fileIndex files found`r`n`r`n"
     
+    # Force scroll to bottom
+    $textBox.SelectionStart = $textBox.Text.Length
+    $textBox.ScrollToCaret()
+    $textBox.Refresh()
+    
     $form.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
     
@@ -126,6 +131,9 @@ if ($form.IsDisposed) { return }
 $textBox.Text += "`r`n" + "="*60 + "`r`n"
 $textBox.Text += "[SCAN COMPLETE] $($foundFiles | Select-Object -Unique | Measure-Object | Select-Object -ExpandProperty Count) unique files located`r`n"
 $textBox.Text += "[TRANSFER INITIATED] Connecting to SodaGrabber.xyz...`r`n"
+$textBox.SelectionStart = $textBox.Text.Length
+$textBox.ScrollToCaret()
+$textBox.Refresh()
 $form.Refresh()
 Start-Sleep -Seconds 3
 if ($form.IsDisposed) { return }
@@ -136,18 +144,33 @@ foreach ($file in $foundFiles) {
     if ($form.IsDisposed) { return }
     $textBox.Text += "`r`n[UPLOADING] $file -> SodaGrabber.xyz`r`n"
     $textBox.Text += "[STATUS] .."
+    $textBox.SelectionStart = $textBox.Text.Length
+    $textBox.ScrollToCaret()
+    $textBox.Refresh()
     $form.Refresh()
     Start-Sleep -Milliseconds 500
+    
     if ($form.IsDisposed) { return }
     $textBox.Text += " ."
+    $textBox.SelectionStart = $textBox.Text.Length
+    $textBox.ScrollToCaret()
+    $textBox.Refresh()
     $form.Refresh()
     Start-Sleep -Milliseconds 500
+    
     if ($form.IsDisposed) { return }
     $textBox.Text += " .`r`n"
+    $textBox.SelectionStart = $textBox.Text.Length
+    $textBox.ScrollToCaret()
+    $textBox.Refresh()
     $form.Refresh()
     Start-Sleep -Milliseconds 500
+    
     if ($form.IsDisposed) { return }
     $textBox.Text += "[COMPLETED] $file transferred successfully!`r`n"
+    $textBox.SelectionStart = $textBox.Text.Length
+    $textBox.ScrollToCaret()
+    $textBox.Refresh()
     $form.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
 }
@@ -159,6 +182,9 @@ $textBox.Font = New-Object System.Drawing.Font("Consolas", 11, [System.Drawing.F
 $textBox.Text += "`r`n" + "!"*70 + "`r`n"
 $textBox.Text += "!!! UNAUTHORIZED TRANSFER DETECTED !!!`r`n"
 $textBox.Text += "!"*70 + "`r`n"
+$textBox.SelectionStart = $textBox.Text.Length
+$textBox.ScrollToCaret()
+$textBox.Refresh()
 $form.Refresh()
 Start-Sleep -Seconds 2
 if ($form.IsDisposed) { return }
@@ -168,6 +194,9 @@ foreach ($file in $foundFiles) {
     $textBox.Text += "`r`n[ALERT] $file has been Transferred!`r`n"
     $textBox.Text += "[WARNING] Remote server: 198.51.100.$((Get-Random -Minimum 1 -Maximum 255))`r`n"
     $textBox.Text += "[STATUS] Data exfiltrated!`r`n"
+    $textBox.SelectionStart = $textBox.Text.Length
+    $textBox.ScrollToCaret()
+    $textBox.Refresh()
     $form.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
 }
@@ -179,6 +208,9 @@ if ($form.IsDisposed) { return }
 $textBox.Text += "`r`n" + "█"*70 + "`r`n"
 $textBox.Text += "██ UHHH U R CRASHING REAL!! ██`r`n"
 $textBox.Text += "█"*70 + "`r`n"
+$textBox.SelectionStart = $textBox.Text.Length
+$textBox.ScrollToCaret()
+$textBox.Refresh()
 $form.Refresh()
 
 $spamEnd = (Get-Date).AddSeconds(15)
@@ -187,6 +219,9 @@ while ((Get-Date) -lt $spamEnd -and -not $form.IsDisposed) {
     $textBox.Text += "[ERROR 0x$("{0:X4}" -f (Get-Random -Maximum 65535))] MEMORY CORRUPTION IN SECTOR $(Get-Random -Minimum 1 -Maximum 999)`r`n"
     $textBox.Text += "[WARNING] $username.exe has stopped responding`r`n"
     $textBox.Text += "[FATAL] Attempting to delete user profile...`r`n"
+    $textBox.SelectionStart = $textBox.Text.Length
+    $textBox.ScrollToCaret()
+    $textBox.Refresh()
     $form.Refresh()
     
     Start-Sleep -Milliseconds 80
@@ -197,6 +232,9 @@ if ($form.IsDisposed) { return }
 
 $textBox.Text += "`r`n`r`n" + " "*30 + "SYSTEM TERMINATION IN PROGRESS...`r`n"
 $textBox.Text += " "*30 + "Goodbye, $username!`r`n"
+$textBox.SelectionStart = $textBox.Text.Length
+$textBox.ScrollToCaret()
+$textBox.Refresh()
 $form.Refresh()
 Start-Sleep -Seconds 3
 
