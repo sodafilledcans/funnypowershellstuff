@@ -33,7 +33,6 @@ $form.Add_KeyDown({
     }
 })
 
-# Use ListBox instead of Label - it handles scrolling naturally
 $listBox = New-Object System.Windows.Forms.ListBox
 $listBox.ForeColor = "Lime"
 $listBox.BackColor = "Black"
@@ -75,154 +74,155 @@ $scanLocations = @(
     "$env:USERPROFILE\AppData\Local",
     "$env:USERPROFILE\AppData\Roaming",
     "C:\Windows\System32",
-    "C:\Windows",
-    "$env:USERPROFILE",
-    "C:\"
+    "C:\Windows"
 )
 
 $foundFiles = @()
+$filePaths = @()
+$fileSizes = @()
 $scanStartTime = Get-Date
 $scanDuration = 101
 $scanEndTime = $scanStartTime.AddSeconds($scanDuration)
 
+# ONLY collect real files - NO FALLBACKS
 $allFiles = @()
 foreach ($location in $scanLocations) {
     if (Test-Path $location) {
         try {
-            Write-Host "Scanning $location..." -ForegroundColor Gray
             $files = Get-ChildItem -Path $location -File -ErrorAction SilentlyContinue -Recurse -Force -ErrorAction SilentlyContinue | 
-                     Where-Object { $_.Length -gt 0 } |
-                     Select-Object -First 100
+                     Where-Object { $_.Length -gt 0 -and $_.Name -notlike "*System Volume Information*" }
             $allFiles += $files
-            Write-Host "Found $($files.Count) files in $location" -ForegroundColor Gray
-        } catch {
-            Write-Host "Error scanning $location" -ForegroundColor Gray
-        }
+        } catch {}
     }
 }
 
 $allFiles = $allFiles | Where-Object { $_.Name -ne $null } | Sort-Object { Get-Random }
-
-if ($allFiles.Count -eq 0) {
-    Write-Host "No files found, using fallback" -ForegroundColor Yellow
-    for ($i = 1; $i -le 500; $i++) {
-        $allFiles += [PSCustomObject]@{
-            Name = "system_file_$i.dll"
-            FullName = "C:\Windows\System32\system_file_$i.dll"
-            Length = Get-Random -Minimum 1000 -Maximum 10000000
-        }
-    }
-}
-
-$fileIndex = 0
 $totalFiles = $allFiles.Count
 
-while ((Get-Date) -lt $scanEndTime) {
-    $currentFile = $allFiles[$fileIndex % $totalFiles]
-    $fileIndex++
-    
-    $fileName = $currentFile.Name
-    $fileSize = [math]::Round($currentFile.Length / 1MB, 2)
-    if ($fileSize -lt 0.01) { $fileSize = Get-Random -Minimum 0.1 -Maximum 5 }
-    
-    $filePath = $currentFile.FullName
-    
-    $foundFiles += $fileName
-    
-    $listBox.Items.Add("[FOUND] $fileName")
-    $listBox.Items.Add("[LOCATION] $filePath")
-    $listBox.Items.Add("[SIZE] $fileSize MB")
-    $listBox.Items.Add("[DOWNLOADING] $fileName...")
-    
-    $elapsed = ((Get-Date) - $scanStartTime).TotalSeconds
-    $percentComplete = [math]::Round(($elapsed / $scanDuration) * 100)
-    $listBox.Items.Add("[PROGRESS] $percentComplete% - $fileIndex files found")
+if ($totalFiles -eq 0) {
+    $listBox.Items.Add("ERROR: No files found on system!")
     $listBox.Items.Add("")
-    
-    $listBox.TopIndex = $listBox.Items.Count - 1
+    $listBox.Items.Add("Press ESC to exit")
     $form.Refresh()
-    [System.Windows.Forms.Application]::DoEvents()
-    
-    $delay = Get-Random -Minimum 200 -Maximum 400
-    Start-Sleep -Milliseconds $delay
-}
+} else {
+    $fileIndex = 0
 
-$listBox.Items.Add("")
-$listBox.Items.Add("="*60)
-$listBox.Items.Add("[SCAN COMPLETE] $($foundFiles | Select-Object -Unique | Measure-Object | Select-Object -ExpandProperty Count) unique files located")
-$listBox.Items.Add("[TRANSFER INITIATED] Connecting to SodaGrabber.xyz...")
-$listBox.TopIndex = $listBox.Items.Count - 1
-$form.Refresh()
-Start-Sleep -Seconds 3
+    while ((Get-Date) -lt $scanEndTime -and $totalFiles -gt 0) {
+        $currentFile = $allFiles[$fileIndex % $totalFiles]
+        $fileIndex++
+        
+        $fileName = $currentFile.Name
+        $fileSize = [math]::Round($currentFile.Length / 1MB, 2)
+        $filePath = $currentFile.FullName
+        
+        $foundFiles += $fileName
+        $filePaths += $filePath
+        $fileSizes += $fileSize
+        
+        $listBox.Items.Add("[FOUND] $fileName")
+        $listBox.Items.Add("[LOCATION] $filePath")
+        $listBox.Items.Add("[SIZE] $fileSize MB")
+        $listBox.Items.Add("[DOWNLOADING] $fileName...")
+        
+        $elapsed = ((Get-Date) - $scanStartTime).TotalSeconds
+        $percentComplete = [math]::Round(($elapsed / $scanDuration) * 100)
+        $listBox.Items.Add("[PROGRESS] $percentComplete% - $fileIndex files found")
+        $listBox.Items.Add("")
+        
+        $listBox.TopIndex = $listBox.Items.Count - 1
+        $form.Refresh()
+        [System.Windows.Forms.Application]::DoEvents()
+        
+        $delay = Get-Random -Minimum 200 -Maximum 400
+        Start-Sleep -Milliseconds $delay
+    }
 
-$foundFiles = $foundFiles | Select-Object -Unique
-
-foreach ($file in $foundFiles) {
     $listBox.Items.Add("")
-    $listBox.Items.Add("[UPLOADING] $file -> SodaGrabber.xyz")
-    $listBox.Items.Add("[STATUS] ..")
+    $listBox.Items.Add("="*60)
+    $listBox.Items.Add("[SCAN COMPLETE] $($foundFiles | Select-Object -Unique | Measure-Object | Select-Object -ExpandProperty Count) unique files located")
+    $listBox.Items.Add("[TRANSFER INITIATED] Connecting to SodaGrabber.xyz...")
     $listBox.TopIndex = $listBox.Items.Count - 1
     $form.Refresh()
-    Start-Sleep -Milliseconds 500
-    $listBox.Items[$listBox.Items.Count - 1] = "[STATUS] .. ."
-    $form.Refresh()
-    Start-Sleep -Milliseconds 500
-    $listBox.Items[$listBox.Items.Count - 1] = "[STATUS] .. . ."
-    $form.Refresh()
-    Start-Sleep -Milliseconds 500
-    $listBox.Items.Add("[COMPLETED] $file transferred successfully!")
-    $listBox.TopIndex = $listBox.Items.Count - 1
-    $form.Refresh()
-    [System.Windows.Forms.Application]::DoEvents()
-}
+    Start-Sleep -Seconds 3
 
-$listBox.Items.Add("")
-$listBox.Items.Add("!"*70)
-$listBox.Items.Add("!!! UNAUTHORIZED TRANSFER DETECTED !!!")
-$listBox.Items.Add("!"*70)
-$listBox.TopIndex = $listBox.Items.Count - 1
-$form.Refresh()
-Start-Sleep -Seconds 2
+    $foundFiles = $foundFiles | Select-Object -Unique
+    $filePaths = $filePaths | Select-Object -Unique
+    $fileSizes = $fileSizes | Select-Object -Unique
 
-foreach ($file in $foundFiles) {
+    for ($i = 0; $i -lt $foundFiles.Count; $i++) {
+        $file = $foundFiles[$i]
+        $path = if ($i -lt $filePaths.Count) { $filePaths[$i] } else { "Unknown" }
+        $size = if ($i -lt $fileSizes.Count) { $fileSizes[$i] } else { 0 }
+        
+        $listBox.Items.Add("")
+        $listBox.Items.Add("[UPLOADING] $file -> SodaGrabber.xyz")
+        $listBox.Items.Add("[FROM] $path")
+        $listBox.Items.Add("[SIZE] $size MB")
+        $listBox.Items.Add("[STATUS] ..")
+        $listBox.TopIndex = $listBox.Items.Count - 1
+        $form.Refresh()
+        Start-Sleep -Milliseconds 500
+        $listBox.Items[$listBox.Items.Count - 1] = "[STATUS] .. ."
+        $form.Refresh()
+        Start-Sleep -Milliseconds 500
+        $listBox.Items[$listBox.Items.Count - 1] = "[STATUS] .. . ."
+        $form.Refresh()
+        Start-Sleep -Milliseconds 500
+        $listBox.Items.Add("[COMPLETED] $file transferred successfully!")
+        $listBox.TopIndex = $listBox.Items.Count - 1
+        $form.Refresh()
+        [System.Windows.Forms.Application]::DoEvents()
+    }
+
     $listBox.Items.Add("")
-    $listBox.Items.Add("[ALERT] $file has been Transferred!")
-    $listBox.Items.Add("[WARNING] Remote server: 198.51.100.$((Get-Random -Minimum 1 -Maximum 255))")
-    $listBox.Items.Add("[STATUS] Data exfiltrated!")
+    $listBox.Items.Add("!"*70)
+    $listBox.Items.Add("!!! UNAUTHORIZED TRANSFER DETECTED !!!")
+    $listBox.Items.Add("!"*70)
     $listBox.TopIndex = $listBox.Items.Count - 1
     $form.Refresh()
-    [System.Windows.Forms.Application]::DoEvents()
-    Start-Sleep -Milliseconds 100
-}
+    Start-Sleep -Seconds 2
 
-Start-Sleep -Seconds 2
+    for ($i = 0; $i -lt $foundFiles.Count; $i++) {
+        $file = $foundFiles[$i]
+        $listBox.Items.Add("")
+        $listBox.Items.Add("[ALERT] $file has been Transferred!")
+        $listBox.Items.Add("[WARNING] Remote server: 198.51.100.$((Get-Random -Minimum 1 -Maximum 255))")
+        $listBox.Items.Add("[STATUS] Data exfiltrated!")
+        $listBox.TopIndex = $listBox.Items.Count - 1
+        $form.Refresh()
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Milliseconds 100
+    }
 
-$listBox.Items.Add("")
-$listBox.Items.Add("█"*70)
-$listBox.Items.Add("██ UHHH U R CRASHING REAL!! ██")
-$listBox.Items.Add("█"*70)
-$listBox.TopIndex = $listBox.Items.Count - 1
-$form.Refresh()
+    Start-Sleep -Seconds 2
 
-$spamEnd = (Get-Date).AddSeconds(15)
-while ((Get-Date) -lt $spamEnd) {
-    $listBox.Items.Add("[CRITICAL] SYSTEM DESTABILIZATION DETECTED - FORCING DESKTOP REDIRECT")
-    $listBox.Items.Add("[ERROR 0x$("{0:X4}" -f (Get-Random -Maximum 65535))] MEMORY CORRUPTION IN SECTOR $(Get-Random -Minimum 1 -Maximum 999)")
-    $listBox.Items.Add("[WARNING] $username.exe has stopped responding")
-    $listBox.Items.Add("[FATAL] Attempting to delete user profile...")
+    $listBox.Items.Add("")
+    $listBox.Items.Add("█"*70)
+    $listBox.Items.Add("██ UHHH U R CRASHING REAL!! ██")
+    $listBox.Items.Add("█"*70)
     $listBox.TopIndex = $listBox.Items.Count - 1
     $form.Refresh()
-    
-    Start-Sleep -Milliseconds 80
-    [System.Windows.Forms.Application]::DoEvents()
-}
 
-$listBox.Items.Add("")
-$listBox.Items.Add(" "*30 + "SYSTEM TERMINATION IN PROGRESS...")
-$listBox.Items.Add(" "*30 + "Goodbye, $username!")
-$listBox.TopIndex = $listBox.Items.Count - 1
-$form.Refresh()
-Start-Sleep -Seconds 3
+    $spamEnd = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $spamEnd) {
+        $listBox.Items.Add("[CRITICAL] SYSTEM DESTABILIZATION DETECTED - FORCING DESKTOP REDIRECT")
+        $listBox.Items.Add("[ERROR 0x$("{0:X4}" -f (Get-Random -Maximum 65535))] MEMORY CORRUPTION IN SECTOR $(Get-Random -Minimum 1 -Maximum 999)")
+        $listBox.Items.Add("[WARNING] $username.exe has stopped responding")
+        $listBox.Items.Add("[FATAL] Attempting to delete user profile...")
+        $listBox.TopIndex = $listBox.Items.Count - 1
+        $form.Refresh()
+        
+        Start-Sleep -Milliseconds 80
+        [System.Windows.Forms.Application]::DoEvents()
+    }
+
+    $listBox.Items.Add("")
+    $listBox.Items.Add(" "*30 + "SYSTEM TERMINATION IN PROGRESS...")
+    $listBox.Items.Add(" "*30 + "Goodbye, $username!")
+    $listBox.TopIndex = $listBox.Items.Count - 1
+    $form.Refresh()
+    Start-Sleep -Seconds 3
+}
 
 $form.Close()
 [System.Windows.Forms.Application]::Exit()
