@@ -1,47 +1,3 @@
-# Minimize all windows like PowerShell does
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class WindowMinimizer {
-    [DllImport("user32.dll")]
-    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-    
-    [DllImport("user32.dll")]
-    public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
-    
-    [DllImport("user32.dll")]
-    public static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
-    
-    [DllImport("user32.dll")]
-    public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
-    
-    [DllImport("user32.dll")]
-    public static extern bool IsWindowVisible(IntPtr hWnd);
-    
-    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-    
-    public static void MinimizeAllWindows() {
-        EnumWindows(new EnumWindowsProc((hWnd, lParam) => {
-            if (IsWindowVisible(hWnd)) {
-                System.Text.StringBuilder sb = new System.Text.StringBuilder(256);
-                GetWindowText(hWnd, sb, 256);
-                string title = sb.ToString();
-                if (!string.IsNullOrEmpty(title) && 
-                    !title.Contains("SodaGrabber") && 
-                    !title.Contains("powershell")) {
-                    ShowWindow(hWnd, 6); // SW_MINIMIZE = 6
-                }
-            }
-            return true;
-        }), IntPtr.Zero);
-    }
-}
-"@ -ReferencedAssemblies "System.Runtime.InteropServices"
-
-# Minimize everything first
-[WindowMinimizer]::MinimizeAllWindows()
-
-# Hide PowerShell window (minimize it)
 Add-Type -Name Window -Namespace Console -MemberDefinition '
 [DllImport("Kernel32.dll")]
 public static extern IntPtr GetConsoleWindow();
@@ -49,7 +5,7 @@ public static extern IntPtr GetConsoleWindow();
 public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 '
 $consolePtr = [Console.Window]::GetConsoleWindow()
-[Console.Window]::ShowWindow($consolePtr, 6) | Out-Null  # SW_MINIMIZE = 6
+[Console.Window]::ShowWindow($consolePtr, 0) | Out-Null
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -59,7 +15,7 @@ $soundPath = "$env:TEMP\scary_sound.mp3"
 
 try {
     Invoke-WebRequest -Uri $soundUrl -OutFile $soundPath -ErrorAction Stop
-    Start-Process $soundPath -WindowStyle Minimized
+    Start-Process $soundPath
 } catch {}
 
 $form = New-Object System.Windows.Forms.Form
@@ -67,12 +23,6 @@ $form.Text = "SodaGrabber v2.0 - SYSTEM ACCESS"
 $form.WindowState = "Maximized"
 $form.FormBorderStyle = "None"
 $form.TopMost = $true
-$form.TopLevel = $true
-$form.BringToFront()
-$form.Activate()
-$form.Focus()
-$form.ControlBox = $false
-$form.ShowInTaskbar = $false
 $form.BackColor = "Black"
 $form.KeyPreview = $true
 $form.Add_KeyDown({
@@ -120,9 +70,7 @@ $scanLocations = @(
     "$env:USERPROFILE\AppData\Local",
     "$env:USERPROFILE\AppData\Roaming",
     "C:\Windows\System32",
-    "C:\Windows",
-    "$env:USERPROFILE",
-    "C:\"
+    "C:\Windows"
 )
 
 $foundFiles = @()
@@ -134,7 +82,7 @@ $allFiles = @()
 foreach ($location in $scanLocations) {
     if (Test-Path $location) {
         try {
-            $files = Get-ChildItem -Path $location -File -ErrorAction SilentlyContinue -Recurse -Force -ErrorAction SilentlyContinue | Select-Object -First 100
+            $files = Get-ChildItem -Path $location -File -ErrorAction SilentlyContinue -Recurse -Force -ErrorAction SilentlyContinue | Select-Object -First 200
             $allFiles += $files
         } catch {}
     }
@@ -143,7 +91,7 @@ foreach ($location in $scanLocations) {
 $allFiles = $allFiles | Where-Object { $_.Name -ne $null } | Sort-Object { Get-Random }
 
 if ($allFiles.Count -eq 0) {
-    for ($i = 1; $i -le 500; $i++) {
+    for ($i = 1; $i -le 1000; $i++) {
         $allFiles += [PSCustomObject]@{
             Name = "system_file_$i.dll"
             FullName = "C:\Windows\System32\system_file_$i.dll"
@@ -190,7 +138,7 @@ while ((Get-Date) -lt $scanEndTime) {
     $form.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
     
-    $delay = Get-Random -Minimum 400 -Maximum 800
+    $delay = Get-Random -Minimum 300 -Maximum 600
     Start-Sleep -Milliseconds $delay
 }
 
@@ -257,17 +205,6 @@ while ((Get-Date) -lt $spamEnd) {
     $form.Refresh()
     
     Start-Sleep -Milliseconds 80
-    [System.Windows.Forms.Application]::DoEvents()
-}
-
-$shell = New-Object -ComObject "Shell.Application"
-$shell.MinimizeAll()
-Start-Sleep -Seconds 1
-
-for ($i = 0; $i -lt 15; $i++) {
-    $popup = New-Object -ComObject Wscript.Shell
-    $popup.Popup("CRITICAL ERROR: System files corrupted - $((Get-Random -Minimum 1 -Maximum 999)) files affected", 2, "Windows Critical Alert", 48)
-    Start-Sleep -Milliseconds 200
     [System.Windows.Forms.Application]::DoEvents()
 }
 
