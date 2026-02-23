@@ -27,34 +27,39 @@ $form.BackColor = "Black"
 $form.KeyPreview = $true
 $form.Add_KeyDown({
     if ($_.KeyCode -eq "Escape") {
+        Get-Process | Where-Object { $_.Path -like "*scary_sound.mp3" } | Stop-Process -Force
         $form.Close()
         [System.Windows.Forms.Application]::Exit()
     }
 })
 
-# Use RichTextBox instead of Label for unlimited scrolling
-$textBox = New-Object System.Windows.Forms.RichTextBox
-$textBox.ForeColor = "Lime"
-$textBox.BackColor = "Black"
-$textBox.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
-$textBox.Text = ""
-$textBox.Dock = "Fill"
-$textBox.ReadOnly = $true
-$textBox.BorderStyle = "None"
-$textBox.WordWrap = $true
-$textBox.ScrollBars = "Vertical"
+# Use ListBox instead of Label - it handles scrolling naturally
+$listBox = New-Object System.Windows.Forms.ListBox
+$listBox.ForeColor = "Lime"
+$listBox.BackColor = "Black"
+$listBox.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
+$listBox.Dock = "Fill"
+$listBox.BorderStyle = "None"
+$listBox.ScrollAlwaysVisible = $true
+$listBox.HorizontalScrollbar = $false
+$listBox.IntegralHeight = $false
+$listBox.SelectionMode = "None"
 
-$form.Controls.Add($textBox)
+$form.Controls.Add($listBox)
 $form.Show()
 $form.Refresh()
 Start-Sleep -Milliseconds 1350
 
 $username = [Environment]::UserName
 
-$textBox.Text = "Hello $username!`r`n`r`nInitializing SodaGrabber v2.0...`r`n"
+$listBox.Items.Add("Hello $username!")
+$listBox.Items.Add("")
+$listBox.Items.Add("Initializing SodaGrabber v2.0...")
+$listBox.Items.Add("")
 $form.Refresh()
 Start-Sleep -Seconds 2
-$textBox.Text += "Scanning system directories...`r`n`r`n"
+$listBox.Items.Add("Scanning system directories...")
+$listBox.Items.Add("")
 $form.Refresh()
 Start-Sleep -Seconds 1
 
@@ -65,46 +70,41 @@ $scanLocations = @(
     "$env:USERPROFILE\Pictures",
     "$env:USERPROFILE\Videos",
     "$env:USERPROFILE\Music",
-    "$env:USERPROFILE\AppData\Local",
-    "$env:USERPROFILE\AppData\Roaming",
     "C:\Program Files",
     "C:\Program Files (x86)",
+    "$env:USERPROFILE\AppData\Local",
+    "$env:USERPROFILE\AppData\Roaming",
     "C:\Windows\System32",
     "C:\Windows",
+    "$env:USERPROFILE",
     "C:\"
 )
 
 $foundFiles = @()
-$filePaths = @()
 $scanStartTime = Get-Date
 $scanDuration = 101
 $scanEndTime = $scanStartTime.AddSeconds($scanDuration)
 
-# Collect real files first
 $allFiles = @()
 foreach ($location in $scanLocations) {
     if (Test-Path $location) {
         try {
             Write-Host "Scanning $location..." -ForegroundColor Gray
             $files = Get-ChildItem -Path $location -File -ErrorAction SilentlyContinue -Recurse -Force -ErrorAction SilentlyContinue | 
-                     Where-Object { $_.Length -gt 0 -and $_.Name -notlike "*System Volume Information*" } |
-                     Select-Object -First 50
+                     Where-Object { $_.Length -gt 0 } |
+                     Select-Object -First 100
             $allFiles += $files
             Write-Host "Found $($files.Count) files in $location" -ForegroundColor Gray
         } catch {
-            Write-Host "Error scanning $location : $_" -ForegroundColor Gray
+            Write-Host "Error scanning $location" -ForegroundColor Gray
         }
-    } else {
-        Write-Host "Location not found: $location" -ForegroundColor Gray
     }
 }
 
 $allFiles = $allFiles | Where-Object { $_.Name -ne $null } | Sort-Object { Get-Random }
 
-Write-Host "Total real files collected: $($allFiles.Count)" -ForegroundColor Green
-
 if ($allFiles.Count -eq 0) {
-    Write-Host "No real files found, using fallback" -ForegroundColor Yellow
+    Write-Host "No files found, using fallback" -ForegroundColor Yellow
     for ($i = 1; $i -le 500; $i++) {
         $allFiles += [PSCustomObject]@{
             Name = "system_file_$i.dll"
@@ -116,7 +116,6 @@ if ($allFiles.Count -eq 0) {
 
 $fileIndex = 0
 $totalFiles = $allFiles.Count
-$lastScrollPos = 0
 
 while ((Get-Date) -lt $scanEndTime) {
     $currentFile = $allFiles[$fileIndex % $totalFiles]
@@ -127,32 +126,20 @@ while ((Get-Date) -lt $scanEndTime) {
     if ($fileSize -lt 0.01) { $fileSize = Get-Random -Minimum 0.1 -Maximum 5 }
     
     $filePath = $currentFile.FullName
-    if (-not $filePath -or $filePath -eq "C:\Unknown\Path\$fileName") {
-        # Try to find a real path for this file
-        $realFile = Get-ChildItem -Path $env:USERPROFILE -File -Recurse -ErrorAction SilentlyContinue | 
-                    Where-Object { $_.Name -eq $fileName } | 
-                    Select-Object -First 1
-        if ($realFile) {
-            $filePath = $realFile.FullName
-            $fileSize = [math]::Round($realFile.Length / 1MB, 2)
-        }
-    }
     
     $foundFiles += $fileName
-    $filePaths += $filePath
     
-    $textBox.Text += "[FOUND] $fileName`r`n"
-    $textBox.Text += "[LOCATION] $filePath`r`n"
-    $textBox.Text += "[SIZE] $fileSize MB`r`n"
-    $textBox.Text += "[DOWNLOADING] $fileName...`r`n"
+    $listBox.Items.Add("[FOUND] $fileName")
+    $listBox.Items.Add("[LOCATION] $filePath")
+    $listBox.Items.Add("[SIZE] $fileSize MB")
+    $listBox.Items.Add("[DOWNLOADING] $fileName...")
     
     $elapsed = ((Get-Date) - $scanStartTime).TotalSeconds
     $percentComplete = [math]::Round(($elapsed / $scanDuration) * 100)
-    $textBox.Text += "[PROGRESS] $percentComplete% - $fileIndex files found`r`n`r`n"
+    $listBox.Items.Add("[PROGRESS] $percentComplete% - $fileIndex files found")
+    $listBox.Items.Add("")
     
-    # Auto-scroll to bottom
-    $textBox.SelectionStart = $textBox.Text.Length
-    $textBox.ScrollToCaret()
+    $listBox.TopIndex = $listBox.Items.Count - 1
     $form.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
     
@@ -160,60 +147,49 @@ while ((Get-Date) -lt $scanEndTime) {
     Start-Sleep -Milliseconds $delay
 }
 
-$textBox.Text += "`r`n" + "="*60 + "`r`n"
-$textBox.Text += "[SCAN COMPLETE] $($foundFiles | Select-Object -Unique | Measure-Object | Select-Object -ExpandProperty Count) unique files located`r`n"
-$textBox.Text += "[TRANSFER INITIATED] Connecting to SodaGrabber.xyz...`r`n"
-$textBox.SelectionStart = $textBox.Text.Length
-$textBox.ScrollToCaret()
+$listBox.Items.Add("")
+$listBox.Items.Add("="*60)
+$listBox.Items.Add("[SCAN COMPLETE] $($foundFiles | Select-Object -Unique | Measure-Object | Select-Object -ExpandProperty Count) unique files located")
+$listBox.Items.Add("[TRANSFER INITIATED] Connecting to SodaGrabber.xyz...")
+$listBox.TopIndex = $listBox.Items.Count - 1
 $form.Refresh()
 Start-Sleep -Seconds 3
 
 $foundFiles = $foundFiles | Select-Object -Unique
-$filePaths = $filePaths | Select-Object -Unique
 
-for ($i = 0; $i -lt $foundFiles.Count; $i++) {
-    $file = $foundFiles[$i]
-    $path = if ($i -lt $filePaths.Count) { $filePaths[$i] } else { "C:\Unknown\Path\$file" }
-    
-    $textBox.Text += "`r`n[UPLOADING] $file -> SodaGrabber.xyz`r`n"
-    $textBox.Text += "[FROM] $path`r`n"
-    $textBox.Text += "[STATUS] .."
-    $textBox.SelectionStart = $textBox.Text.Length
-    $textBox.ScrollToCaret()
+foreach ($file in $foundFiles) {
+    $listBox.Items.Add("")
+    $listBox.Items.Add("[UPLOADING] $file -> SodaGrabber.xyz")
+    $listBox.Items.Add("[STATUS] ..")
+    $listBox.TopIndex = $listBox.Items.Count - 1
     $form.Refresh()
     Start-Sleep -Milliseconds 500
-    $textBox.Text += " ."
-    $textBox.SelectionStart = $textBox.Text.Length
-    $textBox.ScrollToCaret()
+    $listBox.Items[$listBox.Items.Count - 1] = "[STATUS] .. ."
     $form.Refresh()
     Start-Sleep -Milliseconds 500
-    $textBox.Text += " .`r`n"
-    $textBox.SelectionStart = $textBox.Text.Length
-    $textBox.ScrollToCaret()
+    $listBox.Items[$listBox.Items.Count - 1] = "[STATUS] .. . ."
     $form.Refresh()
     Start-Sleep -Milliseconds 500
-    $textBox.Text += "[COMPLETED] $file transferred successfully!`r`n"
-    $textBox.SelectionStart = $textBox.Text.Length
-    $textBox.ScrollToCaret()
+    $listBox.Items.Add("[COMPLETED] $file transferred successfully!")
+    $listBox.TopIndex = $listBox.Items.Count - 1
     $form.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
 }
 
-$textBox.Text += "`r`n" + "!"*70 + "`r`n"
-$textBox.Text += "!!! UNAUTHORIZED TRANSFER DETECTED !!!`r`n"
-$textBox.Text += "!"*70 + "`r`n"
-$textBox.SelectionStart = $textBox.Text.Length
-$textBox.ScrollToCaret()
+$listBox.Items.Add("")
+$listBox.Items.Add("!"*70)
+$listBox.Items.Add("!!! UNAUTHORIZED TRANSFER DETECTED !!!")
+$listBox.Items.Add("!"*70)
+$listBox.TopIndex = $listBox.Items.Count - 1
 $form.Refresh()
 Start-Sleep -Seconds 2
 
-for ($i = 0; $i -lt $foundFiles.Count; $i++) {
-    $file = $foundFiles[$i]
-    $textBox.Text += "`r`n[ALERT] $file has been Transferred!`r`n"
-    $textBox.Text += "[WARNING] Remote server: 198.51.100.$((Get-Random -Minimum 1 -Maximum 255))`r`n"
-    $textBox.Text += "[STATUS] Data exfiltrated!`r`n"
-    $textBox.SelectionStart = $textBox.Text.Length
-    $textBox.ScrollToCaret()
+foreach ($file in $foundFiles) {
+    $listBox.Items.Add("")
+    $listBox.Items.Add("[ALERT] $file has been Transferred!")
+    $listBox.Items.Add("[WARNING] Remote server: 198.51.100.$((Get-Random -Minimum 1 -Maximum 255))")
+    $listBox.Items.Add("[STATUS] Data exfiltrated!")
+    $listBox.TopIndex = $listBox.Items.Count - 1
     $form.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
     Start-Sleep -Milliseconds 100
@@ -221,31 +197,30 @@ for ($i = 0; $i -lt $foundFiles.Count; $i++) {
 
 Start-Sleep -Seconds 2
 
-$textBox.Text += "`r`n" + "█"*70 + "`r`n"
-$textBox.Text += "██ UHHH U R CRASHING REAL!! ██`r`n"
-$textBox.Text += "█"*70 + "`r`n"
-$textBox.SelectionStart = $textBox.Text.Length
-$textBox.ScrollToCaret()
+$listBox.Items.Add("")
+$listBox.Items.Add("█"*70)
+$listBox.Items.Add("██ UHHH U R CRASHING REAL!! ██")
+$listBox.Items.Add("█"*70)
+$listBox.TopIndex = $listBox.Items.Count - 1
 $form.Refresh()
 
 $spamEnd = (Get-Date).AddSeconds(15)
 while ((Get-Date) -lt $spamEnd) {
-    $textBox.Text += "[CRITICAL] SYSTEM DESTABILIZATION DETECTED - FORCING DESKTOP REDIRECT`r`n"
-    $textBox.Text += "[ERROR 0x$("{0:X4}" -f (Get-Random -Maximum 65535))] MEMORY CORRUPTION IN SECTOR $(Get-Random -Minimum 1 -Maximum 999)`r`n"
-    $textBox.Text += "[WARNING] $username.exe has stopped responding`r`n"
-    $textBox.Text += "[FATAL] Attempting to delete user profile...`r`n"
-    $textBox.SelectionStart = $textBox.Text.Length
-    $textBox.ScrollToCaret()
+    $listBox.Items.Add("[CRITICAL] SYSTEM DESTABILIZATION DETECTED - FORCING DESKTOP REDIRECT")
+    $listBox.Items.Add("[ERROR 0x$("{0:X4}" -f (Get-Random -Maximum 65535))] MEMORY CORRUPTION IN SECTOR $(Get-Random -Minimum 1 -Maximum 999)")
+    $listBox.Items.Add("[WARNING] $username.exe has stopped responding")
+    $listBox.Items.Add("[FATAL] Attempting to delete user profile...")
+    $listBox.TopIndex = $listBox.Items.Count - 1
     $form.Refresh()
     
     Start-Sleep -Milliseconds 80
     [System.Windows.Forms.Application]::DoEvents()
 }
 
-$textBox.Text += "`r`n`r`n" + " "*30 + "SYSTEM TERMINATION IN PROGRESS...`r`n"
-$textBox.Text += " "*30 + "Goodbye, $username!`r`n"
-$textBox.SelectionStart = $textBox.Text.Length
-$textBox.ScrollToCaret()
+$listBox.Items.Add("")
+$listBox.Items.Add(" "*30 + "SYSTEM TERMINATION IN PROGRESS...")
+$listBox.Items.Add(" "*30 + "Goodbye, $username!")
+$listBox.TopIndex = $listBox.Items.Count - 1
 $form.Refresh()
 Start-Sleep -Seconds 3
 
