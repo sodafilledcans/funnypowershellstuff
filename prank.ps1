@@ -11,11 +11,18 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Media
 
+$mp3Player = $null
+
 $soundUrl = "https://raw.githubusercontent.com/sodafilledcans/funnypowershellstuff/main/ScarySound.mp3"
 $soundPath = "$env:TEMP\scary_sound.mp3"
 
 try {
     Invoke-WebRequest -Uri $soundUrl -OutFile $soundPath -ErrorAction Stop
+    
+    $mp3Player = New-Object -ComObject MediaPlayer.MediaPlayer
+    $mp3Player.URL = $soundPath
+    $mp3Player.controls.play()
+    $mp3Player.settings.setMode("loop", $true)
 } catch {
     Write-Host "Sound download failed, using beeps instead"
 }
@@ -29,6 +36,7 @@ $form.BackColor = "Black"
 $form.KeyPreview = $true
 $form.Add_KeyDown({
     if ($_.KeyCode -eq "Escape") {
+        if ($mp3Player) { $mp3Player.controls.stop() }
         $form.Close()
         [System.Windows.Forms.Application]::Exit()
     }
@@ -64,12 +72,6 @@ $label.Text = "Hello $username!`n`nDownloading and Transferring Files...`n"
 $form.Refresh()
 Start-Sleep -Seconds 1
 
-if (Test-Path $soundPath) {
-    $sound = New-Object System.Media.SoundPlayer
-    $sound.SoundLocation = $soundPath
-    $sound.PlayLooping()
-}
-
 $counter = 1
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 1000
@@ -89,7 +91,7 @@ $timer.Add_Tick({
     
     if ($counter -gt 12) {
         $timer.Stop()
-        if ($sound) { $sound.Stop() }
+        if ($mp3Player) { $mp3Player.controls.stop() }
         Start-WarningSequence
     }
 })
@@ -108,6 +110,7 @@ function Start-WarningSequence {
         $label.Text += "`n[ALERT #$($i+1)] CRITICAL SECURITY BREACH - CONTACT ADMINISTRATOR IMMEDIATELY"
         [System.Console]::Beep(1000 + ($i * 50), 80)
         $form.Refresh()
+        [System.Windows.Forms.Application]::DoEvents()
         Start-Sleep -Milliseconds 80
     }
     
@@ -115,6 +118,7 @@ function Start-WarningSequence {
         $label.Text += "`n[ERROR 0x$("{0:X4}" -f (Get-Random -Maximum 65535))] ACCESS VIOLATION - SHUTTING DOWN..."
         [System.Console]::Beep(1200, 30)
         $form.Refresh()
+        [System.Windows.Forms.Application]::DoEvents()
         Start-Sleep -Milliseconds 30
     }
     
@@ -125,35 +129,29 @@ function Start-WarningSequence {
     $form.BackColor = "Black"
     $label.Text = ""
     $form.Refresh()
+    [System.Windows.Forms.Application]::DoEvents()
     
     for ($i = 0; $i -lt 15; $i++) {
         [System.Console]::Beep(500 - ($i * 20), 400)
         [System.Console]::Beep(300 - ($i * 10), 200)
+        [System.Windows.Forms.Application]::DoEvents()
         Start-Sleep -Milliseconds 400
     }
     
     Start-Sleep -Seconds 3
     
-    $form.BackColor = "White"
-    $form.Refresh()
-    Start-Sleep -Milliseconds 200
-    
-    $form.BackColor = "Control"
-    $label.ForeColor = "Black"
-    $label.BackColor = "Control"
-    $label.Font = New-Object System.Drawing.Font("Microsoft Sans Serif", 24, [System.Drawing.FontStyle]::Bold)
-    $label.Text = "`n`n`n`n`n`n`n`n`n`n" + " "*40 + "SYSTEM RESTORED`n`n" + " "*35 + "Just kidding! 😊`n`n`n`n" + " "*30 + "Press any key to exit..."
-    $form.Refresh()
-    
-    $form.Add_KeyDown({
-        $form.Close()
-        [System.Windows.Forms.Application]::Exit()
-    })
+    $form.Close()
+    [System.Windows.Forms.Application]::Exit()
 }
 
 while ($form.Visible) {
     [System.Windows.Forms.Application]::DoEvents()
     Start-Sleep -Milliseconds 100
+}
+
+if ($mp3Player) {
+    $mp3Player.controls.stop()
+    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($mp3Player) | Out-Null
 }
 
 if (Test-Path $soundPath) {
