@@ -44,12 +44,12 @@ $form.Add_KeyDown({
 $label = New-Object System.Windows.Forms.Label
 $label.ForeColor = "Lime"
 $label.BackColor = "Black"
-$label.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
+$label.Font = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Bold)
 $label.Text = ""
 $label.AutoSize = $false
 $label.Size = New-Object System.Drawing.Size($form.Width, $form.Height)
 $label.TextAlign = "TopLeft"
-$label.Padding = New-Object System.Windows.Forms.Padding(20, 10, 20, 10)
+$label.Padding = New-Object System.Windows.Forms.Padding(10, 5, 10, 5)
 
 $form.Controls.Add($label)
 $form.Show()
@@ -78,61 +78,73 @@ $scanLocations = @(
     "$env:USERPROFILE\AppData\Roaming",
     "C:\Windows\System32",
     "C:\Windows",
-    "$env:USERPROFILE"
+    "$env:USERPROFILE",
+    "C:\"
 )
 
 $foundFiles = @()
 $scanStartTime = Get-Date
-$scanDuration = 101 # 1 minute 41 seconds
+$scanDuration = 101
 $scanEndTime = $scanStartTime.AddSeconds($scanDuration)
 
-$fileCache = @{}
+$allFiles = @()
 foreach ($location in $scanLocations) {
     if (Test-Path $location) {
         try {
-            $fileCache[$location] = Get-ChildItem -Path $location -File -ErrorAction SilentlyContinue -Recurse -Force
-        } catch {
-            $fileCache[$location] = @()
+            $files = Get-ChildItem -Path $location -File -ErrorAction SilentlyContinue -Recurse -Force -ErrorAction SilentlyContinue | Select-Object -First 500
+            $allFiles += $files
+        } catch {}
+    }
+}
+
+$allFiles = $allFiles | Where-Object { $_.Name -ne $null } | Sort-Object { Get-Random }
+
+if ($allFiles.Count -eq 0) {
+    for ($i = 1; $i -le 1000; $i++) {
+        $allFiles += [PSCustomObject]@{
+            Name = "system_file_$i.dll"
+            FullName = "C:\Windows\System32\system_file_$i.dll"
+            Length = Get-Random -Minimum 1000 -Maximum 10000000
         }
     }
 }
 
+$fileIndex = 0
+$totalFiles = $allFiles.Count
+
 while ((Get-Date) -lt $scanEndTime) {
-    $randomLocation = Get-Random -InputObject $scanLocations
+    $currentFile = $allFiles[$fileIndex % $totalFiles]
+    $fileIndex++
     
-    if ($fileCache.ContainsKey($randomLocation) -and $fileCache[$randomLocation].Count -gt 0) {
-        $files = $fileCache[$randomLocation]
-        $randomFile = $files | Get-Random -ErrorAction SilentlyContinue
-        
-        if ($randomFile) {
-            $fileName = $randomFile.Name
-            $fileSize = [math]::Round($randomFile.Length / 1MB, 2)
-            $filePath = $randomFile.FullName
-            
-            $foundFiles += $fileName
-            $label.Text += "[FOUND] $fileName`n"
-            $label.Text += "[LOCATION] $filePath`n"
-            $label.Text += "[SIZE] $fileSize MB`n"
-            $label.Text += "[DOWNLOADING] $fileName...`n`n"
-            $form.Refresh()
-        }
-    } else {
-        $label.Text += "[SCANNING] $randomLocation - $(Get-Random -Minimum 100 -Maximum 999) files processed...`n"
-        $form.Refresh()
-    }
+    $fileName = $currentFile.Name
+    $fileSize = [math]::Round($currentFile.Length / 1MB, 2)
+    if ($fileSize -lt 0.01) { $fileSize = Get-Random -Minimum 0.1 -Maximum 50 }
+    
+    $filePath = $currentFile.FullName
+    if (-not $filePath) { $filePath = "C:\Unknown\Path\$fileName" }
+    
+    $foundFiles += $fileName
+    
+    $label.Text += "[FOUND] $fileName`n"
+    $label.Text += "[LOCATION] $filePath`n"
+    $label.Text += "[SIZE] $fileSize MB`n"
+    $label.Text += "[DOWNLOADING] $fileName...`n"
     
     $elapsed = ((Get-Date) - $scanStartTime).TotalSeconds
     $percentComplete = [math]::Round(($elapsed / $scanDuration) * 100)
-    $label.Text += "[PROGRESS] $percentComplete% complete - Time remaining: $([math]::Round($scanDuration - $elapsed)) seconds`n"
-    $form.Refresh()
+    $filesPerSecond = [math]::Round($fileIndex / $elapsed, 1)
+    $label.Text += "[PROGRESS] $percentComplete% - $fileIndex files found ($filesPerSecond/sec)`n`n"
     
-    Start-Sleep -Milliseconds 400
+    $form.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
     
-    if ($label.Text.Length -gt 5000) {
+    if ($label.Text.Length -gt 8000) {
         $lines = $label.Text -split "`n"
-        $label.Text = ($lines[-50..-1] -join "`n")
+        $label.Text = ($lines[-60..-1] -join "`n")
     }
+    
+    $delay = Get-Random -Minimum 200 -Maximum 600
+    Start-Sleep -Milliseconds $delay
 }
 
 $label.Text += "`n" + "="*60 + "`n"
@@ -148,13 +160,13 @@ foreach ($file in $foundFiles) {
     $label.Text += "`n[UPLOADING] $file -> SodaGrabber.xyz`n"
     $label.Text += "[STATUS] .."
     $form.Refresh()
-    Start-Sleep -Milliseconds 800
+    Start-Sleep -Milliseconds 700
     $label.Text += " ."
     $form.Refresh()
-    Start-Sleep -Milliseconds 800
+    Start-Sleep -Milliseconds 700
     $label.Text += " .`n"
     $form.Refresh()
-    Start-Sleep -Milliseconds 800
+    Start-Sleep -Milliseconds 700
     $label.Text += "[COMPLETED] $file transferred successfully!`n"
     $form.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
